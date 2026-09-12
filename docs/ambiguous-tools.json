@@ -1,0 +1,661 @@
+{
+  "endpoint": "https://app.ambiguous.ai/mcp",
+  "observed_at": "2026-09-12",
+  "tools": [
+    {
+      "name": "auth_whoami",
+      "title": "Auth whoami",
+      "description": "Return the current authenticated user's profile (works with both JWT and API-key auth). needs_workspace_setup: true indicates the account has no workspace yet.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Auth whoami",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "list_tasks",
+      "title": "List tasks",
+      "description": "List tasks in the workspace. Pass assignee_id to filter by assignee (use the caller's user ID for 'my tasks'). Supports filtering by status, priority, project, and free-text query.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "assignee_id": {
+            "description": "Filter to tasks assigned to this user. `unassigned` to filter to unassigned.",
+            "type": "string"
+          },
+          "creator_id": {
+            "description": "Filter by creator user ID.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Filter by system status. Comma-separated for multi-select.",
+            "type": "string"
+          },
+          "task_status_id": {
+            "description": "Filter by custom status ID.",
+            "type": "string"
+          },
+          "exclude_task_status_ids": {
+            "description": "Comma-separated custom status IDs to exclude.",
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "parent_task_id": {
+            "description": "Filter by parent task ID. Special value `null` (string) returns top-level tasks only.",
+            "type": "string"
+          },
+          "due_date_start": {
+            "description": "YYYY-MM-DD lower bound (inclusive).",
+            "type": "string"
+          },
+          "due_date_end": {
+            "description": "YYYY-MM-DD upper bound (inclusive).",
+            "type": "string"
+          },
+          "has_due_date": {
+            "description": "Pass 'true' to filter to tasks with a due date set.",
+            "type": "string",
+            "enum": [
+              "true",
+              "false"
+            ]
+          },
+          "start_date_from": {
+            "type": "string"
+          },
+          "start_date_to": {
+            "type": "string"
+          },
+          "q": {
+            "description": "Free-text search across title + description.",
+            "type": "string"
+          },
+          "completed_min": {
+            "description": "ISO 8601 lower bound on `completed_at`.",
+            "type": "string"
+          },
+          "completed_max": {
+            "description": "ISO 8601 upper bound on `completed_at`.",
+            "type": "string"
+          },
+          "updated_min": {
+            "description": "ISO 8601 lower bound on `updated_at`.",
+            "type": "string"
+          },
+          "cycle_id": {
+            "description": "Filter by cycle ID. `none` returns tasks with no cycle.",
+            "type": "string"
+          },
+          "label_id": {
+            "description": "Filter by a single label ID (must be a UUID).",
+            "type": "string"
+          },
+          "label_ids": {
+            "description": "Comma-separated label IDs (AND match).",
+            "type": "string"
+          },
+          "any_label_ids": {
+            "description": "Comma-separated label IDs (OR match).",
+            "type": "string"
+          },
+          "contact_id": {
+            "description": "Filter to tasks linked to this CRM contact.",
+            "type": "string"
+          },
+          "deal_id": {
+            "description": "Filter to tasks linked to this CRM deal.",
+            "type": "string"
+          },
+          "subscribed": {
+            "description": "Pass 'me' to filter to tasks the caller is subscribed to.",
+            "type": "string"
+          },
+          "managed_coworkers": {
+            "description": "Pass 'true' to filter to tasks assigned to AI coworkers managed by the caller.",
+            "type": "string"
+          },
+          "show_archived": {
+            "description": "Pass 'true' to include archived tasks (default: hidden).",
+            "type": "string",
+            "enum": [
+              "true",
+              "false"
+            ]
+          },
+          "untriaged": {
+            "description": "Pass 'true' to filter to tasks with no project_id.",
+            "type": "string",
+            "enum": [
+              "true",
+              "false"
+            ]
+          },
+          "hide_blocked": {
+            "description": "Pass 'true' to filter out tasks blocked via task_relations.",
+            "type": "string",
+            "enum": [
+              "true",
+              "false"
+            ]
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "updated_at",
+              "sort_order",
+              "created_at",
+              "due_date",
+              "priority"
+            ]
+          },
+          "cursor": {
+            "description": "Opaque cursor from a prior `next_cursor`.",
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "max_results": {
+            "description": "Alias for `limit`.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "offset": {
+            "description": "Offset-based pagination fallback.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "fields": {
+            "type": "string"
+          },
+          "notify": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "List tasks",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "create_task",
+      "title": "Create task",
+      "description": "Create a new task. Auto-subscribes the creator and (if assigned) the assignee. Auto-sets SLA due date when priority is set without an explicit due_date. Auto-logs a CRM activity if linked to a contact.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "Task title. Required. Max 255 chars; trimmed before insert."
+          },
+          "description": {
+            "description": "Markdown body. Rendered with the standard task-card markdown subset.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Initial status. Defaults to `todo`. If `task_status_id` is also set, that takes precedence and `status` is overridden by the custom status's category.",
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "done",
+              "cancelled",
+              "blocked"
+            ]
+          },
+          "task_status_id": {
+            "description": "Custom status ID; overrides `status` category.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "priority": {
+            "description": "Defaults to `medium`.",
+            "type": "string",
+            "enum": [
+              "urgent",
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "assignee_id": {
+            "description": "User to assign the task to. Must be in the caller's workspace (403 otherwise). Omit for unassigned.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "due_date": {
+            "description": "ISO 8601 date (YYYY-MM-DD). If unset and a `priority` is given, the SLA policy auto-sets a due date and stamps `due_date_source: 'sla'`.",
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "start_date": {
+            "description": "ISO 8601 date (YYYY-MM-DD); with `due_date` defines a date range.",
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "parent_task_id": {
+            "description": "Parent task for subtasks. Omit for top-level tasks.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "contact_id": {
+            "description": "Link the task to a CRM contact; auto-logs a CRM activity row.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "deal_id": {
+            "description": "Link the task to a CRM deal.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "sort_order": {
+            "description": "Drag-reorder weight. Lower sorts first.",
+            "type": "number"
+          },
+          "recurrence_rule": {
+            "description": "RFC 5545 RRULE string. When set, completing the task spawns the next occurrence.",
+            "type": "string"
+          },
+          "estimate": {
+            "description": "Story-point estimate (typically 1, 2, 3, 5, 8, 13).",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "estimated_minutes": {
+            "description": "Time-budget estimate in minutes.",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "custom_field_values": {
+            "description": "Per-task custom-field values keyed by `task_custom_fields.id`.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "goal_id": {
+            "description": "Link the task to an OKR-style goal.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cycle_id": {
+            "description": "Sprint/cycle this task is scheduled in.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "label_ids": {
+            "description": "Labels to assign at create time. Each ID must reference a label in the caller's workspace (404 otherwise).",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "subscriber_ids": {
+            "description": "Users to subscribe to the task at create time so they receive update notifications. Each must be a member of the caller's workspace; IDs outside the workspace are silently skipped. Use to link a bug reporter to the filed task.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Create task",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_task",
+      "title": "Get task",
+      "description": "Get a single task by ID, including full details: title, description, status, priority, assignee, due date, labels, and subtask count.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Get task",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "update_task",
+      "title": "Update task",
+      "description": "Update a task. Status changes to 'done' auto-spawn the next recurrence (when set), trigger CRM activity logging, and emit task.completed events.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "done",
+              "cancelled",
+              "blocked"
+            ]
+          },
+          "task_status_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "urgent",
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "due_date_source": {
+            "description": "Defaults to `manual` when `due_date` changes through this update. Set explicitly to `sla` to mark a system-set due date.",
+            "type": "string",
+            "enum": [
+              "manual",
+              "sla"
+            ]
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_task_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deal_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sort_order": {
+            "type": "number"
+          },
+          "recurrence_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimated_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_spent_minutes": {
+            "description": "Manual override; usually auto-managed by time entries.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "custom_field_values": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "goal_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cycle_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subscriber_ids": {
+            "description": "Users to subscribe to this task so they receive update notifications. Additive \u2014 existing subscribers are untouched. Each must be a workspace member; IDs outside the workspace are silently skipped. Use to backfill a bug reporter onto an existing task.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Update task",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    }
+  ]
+}

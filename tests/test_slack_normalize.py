@@ -344,6 +344,7 @@ def test_block_action_vote() -> None:
         "action_ts": "1700000900.000000",
     }
     assert nz.block_action_to_event(block_actions_body(action), action) == ButtonPressed(
+        event_id=f"action:{CHANNEL}:1700000000.000200:1700000900.000000",
         thread=ROOT,
         user_id=BOB,
         action="vote",
@@ -421,6 +422,7 @@ def test_view_submission_confirm_form() -> None:
         },
     )
     assert nz.view_submission_to_event(body) == FormSubmitted(
+        event_id=f"view:{body['view']['id']}",
         thread=ROOT,
         user_id=ANN,
         form_id="confirm",

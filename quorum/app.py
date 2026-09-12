@@ -51,6 +51,7 @@ async def main() -> None:
         sys.exit(2)
 
     from quorum.platform.slack.adapter import SlackPlatform
+    from quorum.recorders.ambiguous import AmbiguousTasks
     from quorum.recorders.registry import build_recorders
     from quorum.render.blockkit import render_home
     from quorum.verifier.exa import ExaVerifier
@@ -68,10 +69,24 @@ async def main() -> None:
         recorders=recorders,
         verifier=verifier,
         settings=settings,
+        tasks=AmbiguousTasks(settings.ambiguous_api_key, settings.ambiguous_mcp_url, settings.ambiguous_assignees)
+              if settings.ambiguous_api_key else None,
         home_view=lambda threads, decisions, lang: render_home(threads, decisions, lang=lang),
     )
-    platform.bind(engine, store.seen)
-    await platform.start()
+    bridge_runner = None
+    if settings.channels_enabled:
+        from aiohttp import web
+
+        from quorum.platform.channels_bridge import bridge_app
+
+        auth = await platform.client.auth_test()
+        platform.bot_user_id = auth["user_id"]
+        bridge_runner = web.AppRunner(bridge_app(engine, settings.quorum_bridge_token))
+        await bridge_runner.setup()
+        await web.TCPSite(bridge_runner, "127.0.0.1", settings.quorum_bridge_port).start()
+    else:
+        platform.bind(engine, store.seen)
+        await platform.start()
     scheduler = Scheduler(engine, settings.scheduler_tick_seconds)
     task = asyncio.create_task(scheduler.run(), name="scheduler")
     log.info(
@@ -90,7 +105,10 @@ async def main() -> None:
     log.info("shutdown")
     scheduler.stop()
     task.cancel()
-    await platform.stop()
+    if bridge_runner:
+        await bridge_runner.cleanup()
+    else:
+        await platform.stop()
     await store.close()
 
 

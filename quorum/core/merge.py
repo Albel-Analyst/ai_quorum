@@ -4,7 +4,19 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from quorum.domain.models import CardState, Claim, DecisionHint, Message, OpenQuestion, Option, Position, Status
+from quorum.domain.models import (
+    Blocker,
+    CardState,
+    Claim,
+    ClosureCondition,
+    Commitment,
+    DecisionHint,
+    Message,
+    OpenQuestion,
+    Option,
+    Position,
+    Status,
+)
 from quorum.llm.base import Extraction
 
 
@@ -100,8 +112,10 @@ def merge(state: CardState, ext: Extraction, messages: list[Message], *, now: da
     # claims: keep verification results by text identity
     claims: list[Claim] = []
     for c in ext.claims:
-        existing = next((o for o in state.claims if _similar(o.text, c.text)), None)
-        claims.append(existing or Claim(text=c.text.strip()[:300], by=c.by))
+        existing = next((o for o in state.claims if o.text == c.text.strip()[:300] and o.by == c.by), None)
+        claims.append(existing or Claim(text=c.text.strip()[:300], by=c.by,
+            source_message_ids=[mid for mid in c.source_message_ids if mid in by_id and by_id[mid].user_id == c.by],
+            materiality=c.materiality, disputed=c.disputed, confidence=c.confidence))
     for old in state.claims:
         if old.verification and old not in claims:
             claims.append(old)  # a verified claim stays on the card even if the model stops listing it
@@ -113,11 +127,31 @@ def merge(state: CardState, ext: Extraction, messages: list[Message], *, now: da
         state.deadline_source = "text"
 
     # convergence hint: code renders a Confirm button; nothing is decided by the model
-    if ext.decision_reached and state.status in (Status.FRAMING, Status.DELIBERATING, Status.STALLED):
+    if ext.decision_reached and state.status in (Status.FRAMING, Status.DELIBERATING, Status.STALLED,
+                                                Status.OBSERVING, Status.NEEDS_INPUT, Status.NEEDS_EVIDENCE):
         opt = ext.decision_option_id.strip().upper()[:2] if ext.decision_option_id else None
         state.decision_hint = DecisionHint(option_id=opt if opt in ids else None, by=ext.decision_by, quote=ext.decision_quote.strip()[:160])
     else:
         state.decision_hint = None
+
+    # Only sourced proposals are admitted. Approval remains a separate human action.
+    for proposed in ext.commitments:
+        source = by_id.get(proposed.source_message_id)
+        if (not source or source.is_bot or source.user_id != proposed.owner
+                or not proposed.quote or proposed.quote not in source.text
+                or not proposed.explicit_personal_promise or proposed.confidence < 0.85):
+            continue
+        # Conservative backstop for common aspirational English; other languages still require approval.
+        if re.search(r"\b(we should|i could|i can|maybe|if |jok|hypothetical)", proposed.quote, re.IGNORECASE):
+            continue
+        if any(c.source_message_id == source.id for c in state.commitments):
+            continue
+        condition = ClosureCondition()
+        state.closure_conditions.append(condition)
+        state.commitments.append(Commitment(owner=proposed.owner, action=proposed.action,
+            due_at=proposed.due_at, source_message_id=source.id, source_text=source.text,
+            closure_condition_id=condition.id))
+    state.blockers = [Blocker(**b.model_dump()) for b in ext.blockers if b.source_message_id in by_id]
 
     # who is involved: derived from messages (code), widened by mentions and addressees
     state.participants = participants_of(messages)

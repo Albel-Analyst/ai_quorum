@@ -1,3 +1,5 @@
+> Historical decision-card guide. The current closure lifecycle, setup and gates are in [README.md](README.md) and [docs/DEMO.md](docs/DEMO.md). Voting, phase reposts, expiry reminders and ADR-as-completion below are not the current product contract.
+
 # Quorum — руководство для команды
 
 > Питч в одну строку: **агент, у которого нет реплик — только одна живая карточка и кнопки.**

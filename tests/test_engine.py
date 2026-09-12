@@ -37,7 +37,7 @@ EXT = Extraction(
     options=[ExtractedOption(id="A", label="Postgres", summary="managed PG"), ExtractedOption(id="B", label="Mongo", summary="Atlas")],
     positions=[ExtractedPosition(user_id="U2", option_id="A", argument="we know it")],
     open_questions=[ExtractedOpenQuestion(text="how much is Mongo Atlas?", directed_to="U3", asked_by="U1", asked_at_message_id="3.0")],
-    claims=[ExtractedClaim(text="Atlas M10 costs $57/month", by="U2")],
+    claims=[ExtractedClaim(text="Atlas M10 costs $57/month", by="U2", materiality="material", disputed=True)],
 )
 
 
@@ -94,56 +94,18 @@ def _status(platform: FakePlatform):
 
 async def test_mvp_flow(env):
     engine, platform, store, llm, recorder = env
-    # 1. entry: card posted immediately, then filled by the extractor
     thread = await engine.track(TrackRequested(thread=REF, requested_by="U1", via="mention"))
-    assert thread.state.status == Status.DELIBERATING
-    assert [o.id for o in thread.state.options] == ["A", "B"]
-    assert thread.card_message_id and platform.calls[0][0] == "fetch_thread"
-    assert ("post_card" in {c[0] for c in platform.calls}) and any(c[0] == "update_card" for c in platform.calls)
-    card_ts = thread.card_message_id
-    # 2. my position: the form opens, the submission is a user-sourced position the LLM cannot overwrite
-    await engine.handle(ButtonPressed(thread=REF, user_id="U1", action="my_position", trigger_id="trg"))
-    assert platform.forms_opened[-1]["form"].id == "my_position"
-    await engine.handle(FormSubmitted(thread=REF, user_id="U1", form_id="my_position", values={"option": "B", "argument": "cheaper ops"}, payload={"t": REF.key}))
-    st = (await store.get_thread(REF.key)).state
-    assert st.position_of("U1").source == "user" and st.position_of("U1").option_id == "B"
-    # 3. a new message -> coalesced refresh; user position survives
-    await engine.handle(MessagePosted(thread=REF, message=_msg(4, "U2", "I still say Postgres"), in_thread=True))
-    await asyncio.sleep(0.05)
-    await engine.flush()
-    st = (await store.get_thread(REF.key)).state
-    assert st.position_of("U1").option_id == "B" and st.last_llm_error is None
-    # 4. vote: phase change re-posts the card and deletes the old one
-    await engine.handle(ButtonPressed(thread=REF, user_id="U2", action="open_voting"))
-    thread = await store.get_thread(REF.key)
-    assert thread.state.status == Status.VOTING and thread.card_message_id != card_ts
-    assert platform.messages[("C1", card_ts)]["deleted"] is True
-    await engine.handle(ButtonPressed(thread=REF, user_id="U1", action="vote", payload={"option_id": "A"}))
-    await engine.handle(ButtonPressed(thread=REF, user_id="U1", action="vote", payload={"option_id": "B"}))
-    await engine.handle(ButtonPressed(thread=REF, user_id="U2", action="vote", payload={"option_id": "A"}))
-    st = (await store.get_thread(REF.key)).state
-    assert st.tally() == {"A": 1, "B": 1} and st.all_voted_notified and platform.dms[-1]["user_id"] == "U1"
-    # 5. only the author confirms; the confirm form then decides
-    await engine.handle(ButtonPressed(thread=REF, user_id="U2", action="confirm", trigger_id="trg2"))
-    assert platform.ephemerals[-1]["user_id"] == "U2"
-    await engine.handle(ButtonPressed(thread=REF, user_id="U1", action="confirm", trigger_id="trg3"))
-    assert platform.forms_opened[-1]["form"].id == "confirm"
-    await engine.handle(FormSubmitted(thread=REF, user_id="U1", form_id="confirm", values={"option": "A", "owner": "U2", "note": ""}, payload={"t": REF.key}))
-    thread = await store.get_thread(REF.key)
-    assert thread.state.status == Status.DECIDED and thread.state.decision.option_id == "A" and thread.state.decision.owner == "U2"
-    assert thread.state.decision.summary  # written by the record writer (fake)
-    assert (await store.list_decisions(active_only=True))[0].thread_key == REF.key
-    # 6. record -> Recorded, broadcast card, links in DM
-    await engine.handle(ButtonPressed(thread=REF, user_id="U1", action="record"))
-    thread = await store.get_thread(REF.key)
-    assert thread.state.status == Status.RECORDED and thread.state.records[0].url == "https://conf/x"
-    assert platform.calls[-3][0] == "post_card" and platform.calls[-3][1]["broadcast"] is True or any(
-        c[0] == "post_card" and c[1]["broadcast"] for c in platform.calls
-    )
-    assert "conf/x" in platform.dms[-1]["notice"].text
-    # 7. App Home lists it
-    await engine.publish_home("U1")
-    assert platform.home_views
+    assert thread.state.status == Status.NEEDS_EVIDENCE
+    card_id = thread.card_message_id
+    await engine.handle(FormSubmitted(thread=REF, user_id="U2", form_id="confirm", values={"option": "A"}))
+    assert (await store.get_thread(REF.key)).state.decision is None
+    await engine.handle(FormSubmitted(thread=REF, user_id="U1", form_id="confirm", values={"option": "A"}))
+    current = await store.get_thread(REF.key)
+    assert current.state.status == Status.DECIDED
+    assert current.state.decision.summary == "Postgres"
+    assert current.card_message_id == card_id
+    assert sum(c[0] == "post_card" for c in platform.calls) == 1
+    assert not platform.dms
 
 
 async def test_recorder_fallback_to_markdown(env, tmp_path):
@@ -154,15 +116,16 @@ async def test_recorder_fallback_to_markdown(env, tmp_path):
     await engine.handle(FormSubmitted(thread=REF, user_id="U1", form_id="confirm", values={"option": "A"}, payload={"t": REF.key}))
     await engine.handle(ButtonPressed(thread=REF, user_id="U1", action="record"))
     thread = await store.get_thread(REF.key)
-    assert recorder.calls == 2  # retried once
-    assert thread.state.status == Status.RECORDED and thread.state.records[0].kind == "markdown"
-    assert list((tmp_path / "records").glob("*.md"))
+    assert recorder.calls == 0  # legacy ADR fallback cannot masquerade as execution
+    assert thread.state.status == Status.DECIDED and not thread.state.records
+    assert not list((tmp_path / "records").glob("*.md"))
 
 
 async def test_llm_failure_keeps_card_and_says_so(env):
     engine, platform, store, llm, recorder = env
     await engine.track(TrackRequested(thread=REF, requested_by="U1", via="reaction"))
     llm.set_fail(True)
+    platform.threads[REF.key].append(_msg(5, "U3", "about 57 dollars"))
     await engine.handle(MessagePosted(thread=REF, message=_msg(5, "U3", "about 57 dollars"), in_thread=True))
     await asyncio.sleep(0.05)
     await engine.flush()
@@ -171,61 +134,23 @@ async def test_llm_failure_keeps_card_and_says_so(env):
     assert "⚠️" in str(platform.messages[("C1", (await store.get_thread(REF.key)).card_message_id)]["blocks"])
 
 
-async def test_silent_stakeholder_gets_one_dm_and_not_me(env):
-    engine, platform, store, llm, recorder = env
-    await engine.track(TrackRequested(thread=REF, requested_by="U1", via="mention"))
-    await engine.tick()
-    assert not platform.dms  # not yet: 30 min have not passed, only 0 messages after the question
-    engine.s.demo_time_scale = 10_000  # a demo knob: minutes become milliseconds
-    await engine.tick()
-    to_u3 = lambda: [d for d in platform.dms if d["user_id"] == "U3"]
-    assert len(to_u3()) == 1
-    q = (await store.get_thread(REF.key)).state.open_questions[0]
-    assert q.nudged_at is not None
-    await engine.tick()
-    assert len(to_u3()) == 1  # never twice
-    await engine.handle(ButtonPressed(thread=None, user_id="U3", action="not_me", payload={"t": REF.key, "question_id": q.id}))
-    await engine.handle(ButtonPressed(thread=REF, user_id="U3", action="not_me", payload={"question_id": q.id}))
-    q = (await store.get_thread(REF.key)).state.open_questions[0]
-    assert q.declined and q.directed_to is None
-
-
-async def test_stall_expire_and_deadline(env):
+async def test_silent_scheduler_does_not_nag_or_auto_vote(env):
     engine, platform, store, llm, recorder = env
     await engine.track(TrackRequested(thread=REF, requested_by="U1", via="mention"))
     engine.s.demo_time_scale = 10_000
     await engine.tick()
-    st = (await store.get_thread(REF.key)).state
-    assert st.status == Status.STALLED and any(d["user_id"] == "U1" for d in platform.dms)
-    thread = await store.get_thread(REF.key)
-    thread.state.updated_at = datetime.now(UTC) - timedelta(days=3)
-    await store.save_thread(thread)
-    await engine.tick()
-    thread = await store.get_thread(REF.key)
-    assert thread.state.status == Status.EXPIRED and thread.state.expired_summary
-    # people come back -> deliberating again; a deadline in the past opens the vote
-    await engine.handle(ButtonPressed(thread=REF, user_id="U2", action="unpark"))
-    assert (await store.get_thread(REF.key)).state.status == Status.DELIBERATING
-    await engine.handle(FormSubmitted(thread=REF, user_id="U2", form_id="deadline", values={"date": "2026-01-01", "time": "09:00"}, payload={"t": REF.key}))
-    engine.s.demo_time_scale = 0
-    await engine.tick()
-    st = (await store.get_thread(REF.key)).state
-    assert st.status == Status.VOTING and st.deadline_fired and st.deadline_source == "button"
+    assert not platform.dms
+    assert (await store.get_thread(REF.key)).state.status == Status.NEEDS_EVIDENCE
 
 
-async def test_park_and_return_reminder(env):
+async def test_deferred_loop_is_explicitly_terminal(env):
     engine, platform, store, llm, recorder = env
     await engine.track(TrackRequested(thread=REF, requested_by="U1", via="mention"))
-    await engine.handle(FormSubmitted(thread=REF, user_id="U1", form_id="park", values={"reason": "budget unknown", "return": "2026-01-02"}, payload={"t": REF.key}))
-    st = (await store.get_thread(REF.key)).state
-    assert st.status == Status.PARKED and st.parked.reason == "budget unknown"
-    await engine.tick()
-    assert platform.dms[-1]["user_id"] == "U1" and (await store.get_thread(REF.key)).state.parked.reminded
-    # someone talks -> unparked on the next refresh
-    await engine.handle(MessagePosted(thread=REF, message=_msg(6, "U2", "budget is 5k"), in_thread=True))
-    await asyncio.sleep(0.05)
-    await engine.flush()
-    assert (await store.get_thread(REF.key)).state.status == Status.DELIBERATING
+    await engine.handle(ButtonPressed(thread=REF, user_id="U1", action="defer"))
+    await engine.reconcile(REF.key)
+    state = (await store.get_thread(REF.key)).state
+    assert state.status == Status.DEFERRED and state.next_trigger is None
+    assert not platform.dms
 
 
 async def test_verify_claim(env):

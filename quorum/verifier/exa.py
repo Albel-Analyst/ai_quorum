@@ -43,10 +43,10 @@ class ExaVerifier:
             if not snippets:
                 return Verification(verdict="unclear", summary="No sources found.")
             judgement = await self.judge.judge_claim(claim_text, context, snippets)
-            supporting = [s for s in snippets if s.url in set(judgement.supporting_urls)]
+            supporting = [s for s in snippets if s.url in set(judgement.supporting_urls) and s.snippet.strip()]
             chosen = supporting or snippets[:3]
             return Verification(
-                verdict=judgement.verdict,
+                verdict=judgement.verdict if supporting else "unclear",
                 summary=judgement.summary,
                 sources=[Source(title=s.title or s.url, url=s.url) for s in chosen],
             )

@@ -1,3 +1,23 @@
+# Closure contract (current)
+
+`OpenLoop` is authoritative; `CardState` remains an import alias for compatibility.
+Newly activated threads use the lifecycle in `domain/state_machine.py` and `render_loop`.
+Legacy status values and ADR helpers remain readable, but their old buttons are rejected
+for new OpenLoops. The initial audit explains intentional behavior changes.
+
+- Models propose sourced commitments; code never accepts model approval/completion fields.
+- Confirm decision: thread author or designated decider; alternatives/dissent are frozen.
+- Confirm commitment: proposed owner or decision authority; review owner, date and condition.
+- Record: approved observable commitments only, one durable write intent per commitment.
+- Check now/scheduler: persisted loop → latest Slack → current task → evidence guard.
+- Attest/adjudicate: explicit evidence form; owner/decision authority respectively.
+- Cancel/defer: decision authority only; stop triggers. Supersede: new Slack thread,
+  retire old obligations after its decision is confirmed.
+- `channels_bridge` is authenticated loopback only. Its identity parser is specific to
+  the pinned direct Slack adapter; opaque managed Channels keys are never guessed.
+
+## Historical module contracts
+
 # Internal contracts (read before touching another module)
 
 - `quorum/domain/models.py` — CardState & co. Status is owned by `domain/state_machine.py`; the LLM never sets it.

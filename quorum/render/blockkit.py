@@ -195,6 +195,10 @@ def render_card(
     names: dict[str, str],
 ) -> tuple[list[dict[str, Any]], str]:
     """The one message Quorum keeps in the thread. Returns (blocks, fallback text)."""
+    if state.thread_id or state.status in {Status.OBSERVING, Status.NEEDS_INPUT, Status.NEEDS_EVIDENCE,
+                                         Status.EXECUTING, Status.BLOCKED, Status.VERIFYING,
+                                         Status.CLOSED, Status.CANCELLED, Status.DEFERRED}:
+        return render_loop(thread, state, lang=lang, names=names, verifier_available=verifier_available)
     key = thread.key
     status = state.status
     blocks: list[dict[str, Any]] = []
@@ -269,6 +273,77 @@ def render_card(
 
     text = trim(f"{state.question or t(lang, 'card.title')} — {t(lang, f'status.{status.value}')}", 300)
     return _cap(blocks), text
+
+
+def render_loop(thread: TrackedThread, state: CardState, *, lang: str,
+                names: dict[str, str], verifier_available: bool) -> tuple[list[dict[str, Any]], str]:
+    from quorum.domain.models import TERMINAL
+
+    key = thread.key
+    blocks = [section(f"*{state.status.value.upper()}* · {state.question}")]
+    if state.decision and state.decision.confirmed_by:
+        blocks += _decision_blocks(state, lang, names)
+    else:
+        blocks += _options_blocks(state, lang)
+        blocks += _open_questions_blocks(state, lang, names)
+    for claim in state.claims:
+        if claim.materiality != "material":
+            continue
+        blocks.append(section(f"*Participant assertion* · {who(claim.by, names)}: {claim.text}"))
+        if claim.source_message_ids and thread.ref.platform == "slack":
+            blocks.append(context(" · ".join(link(archive_url(f"slack:{thread.ref.channel_id}:{mid}"), "source message")
+                                            for mid in claim.source_message_ids)))
+        if claim.verification:
+            v = claim.verification
+            blocks.append(section(f"*External evidence: {claim.status}* · {v.summary}"))
+            if v.sources:
+                blocks.append(context(" · ".join(link(s.url, s.title) for s in v.sources)))
+        if (claim.disputed and verifier_available and not claim.checking and claim.status == "unresolved"
+                and state.status not in TERMINAL):
+            blocks += actions([button("Verify", "verify", {"t": key, "claim_id": claim.id})])
+    if state.decision_hint and state.status not in TERMINAL:
+        blocks.append(section(f"*Proposed decision* · {state.decision_hint.quote}"))
+        blocks += actions([button("Confirm / Edit", "confirm", {"t": key}, style="primary")])
+    for c in state.commitments:
+        if c.status in {"cancelled", "superseded"} and state.status not in TERMINAL:
+            continue
+        condition = next(x for x in state.closure_conditions if x.id == c.closure_condition_id)
+        due = slack_date(c.due_at) if c.due_at else "needs date"
+        blocks.append(section(f"*{c.confirmation} · {c.status}* · {who(c.owner, names)}\n{c.action}\n"
+                              f"Due: {due}\nClosure ({condition.mode}): {condition.source} = {condition.expected_state}"))
+        if c.external_record_id:
+            blocks.append(context(link(c.external_url, "Ambiguous task") if c.external_url
+                                  else f"Ambiguous task {c.external_record_id} · link not returned by tool"))
+        if condition.evidence:
+            e = condition.evidence[-1]
+            blocks.append(context(f"Evidence: {e.source} {e.record_id} = {e.value} · {slack_date(e.observed_at)}"))
+        if state.status not in TERMINAL and state.decision and state.decision.confirmed_by:
+            payload = {"t": key, "commitment_id": c.id}
+            if c.confirmation == "pending":
+                blocks += actions([button("Confirm commitment", "commitment", payload),
+                                   button("Reject", "reject_commitment", payload)])
+            elif c.confirmation == "approved" and not c.external_record_id and c.write_state == "not_started" and condition.mode == "observable":
+                blocks += actions([button("Record in Ambiguous", "record_task", payload, style="primary")])
+            elif c.confirmation == "approved" and c.status != "completed" and condition.mode != "observable":
+                label = "Attest completion" if condition.mode == "attestable" else "Adjudicate completion"
+                blocks += actions([button(label, "attest", payload)])
+    for b in state.blockers:
+        if b.status == "open":
+            blocks.append(section(f"*Blocked:* {b.description}\nDependency: {who(b.dependency_owner, names)}\n"
+                                  f"Waiting for: {b.next_expected_event}"))
+    if state.closed_at:
+        blocks.append(context(f"Verified closure: {slack_date(state.closed_at)}"))
+    trigger = state.next_trigger
+    blocks.append(context("Next: " + (f"{trigger.description}" + (f" · {slack_date(trigger.at)}" if trigger.at else "")
+                                      if trigger else "No further checks")))
+    if state.reconciliation_error or state.last_llm_error:
+        blocks.append(section(f"⚠️ {state.reconciliation_error or 'State extraction failed; Check now to retry.'}"))
+    if state.status not in TERMINAL:
+        blocks += actions([button("Check now", "check_now", {"t": key}),
+                           button("Defer", "defer", {"t": key}), button("Cancel", "cancel", {"t": key})])
+    if state.decision and state.decision.confirmed_by and state.status not in {Status.SUPERSEDED, Status.CANCELLED, Status.DEFERRED}:
+        blocks += actions([button("Supersede", "supersede", {"t": key})])
+    return _cap(blocks), trim(f"{state.status.value.upper()} · {state.question or 'Open loop'}", 300)
 
 
 def _options_blocks(state: CardState, lang: str) -> list[dict[str, Any]]:

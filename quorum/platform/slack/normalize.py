@@ -192,6 +192,7 @@ def block_action_to_event(body: dict[str, Any], action: dict[str, Any]) -> Butto
     channel_id = container.get("channel_id") or (body.get("channel") or {}).get("id")
     message_id = container.get("message_ts") or (body.get("message") or {}).get("ts")
     return ButtonPressed(
+        event_id=f"action:{channel_id}:{message_id}:{action.get('action_ts')}" if action.get("action_ts") else None,
         thread=_thread_from_payload(payload),
         user_id=(body.get("user") or {}).get("id", ""),
         action=action_name(action.get("action_id") or ""),
@@ -239,6 +240,7 @@ def view_submission_to_event(body: dict[str, Any]) -> FormSubmitted:
     view = body.get("view") or {}
     payload = _parse_value(view.get("private_metadata"))
     return FormSubmitted(
+        event_id=f"view:{view['id']}" if view.get("id") else None,
         thread=_thread_from_payload(payload),
         user_id=(body.get("user") or {}).get("id", ""),
         form_id=view.get("callback_id") or "",

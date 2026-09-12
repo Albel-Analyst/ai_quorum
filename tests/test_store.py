@@ -11,7 +11,7 @@ async def test_threads_decisions_dedup_and_cache():
     t = TrackedThread(ref=ref, author_id="U1", requested_by="U1")
     await s.save_thread(t)
     assert (await s.get_thread(ref.key)).author_id == "U1"
-    assert len(await s.list_threads(statuses=["framing"])) == 1
+    assert len(await s.list_threads(statuses=["OBSERVING"])) == 1
     assert await s.list_threads(statuses=["voting"]) == []
     d = DecisionMemory(thread_key=ref.key, title="q", summary="s", decided_at=datetime.now(UTC), channel_id="C1")
     await s.save_decision(d)

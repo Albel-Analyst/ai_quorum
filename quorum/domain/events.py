@@ -8,7 +8,11 @@ from pydantic import BaseModel, Field
 from quorum.domain.models import Message, ThreadRef
 
 
-class TrackRequested(BaseModel):
+class InboundEvent(BaseModel):
+    event_id: str | None = None
+
+
+class TrackRequested(InboundEvent):
     """A human asked Quorum to follow a thread: @mention, message shortcut, or a ⚖️ reaction on the root."""
 
     thread: ThreadRef
@@ -18,23 +22,23 @@ class TrackRequested(BaseModel):
     supersedes: str | None = None            # thread key of a decision this new thread disputes
 
 
-class MessagePosted(BaseModel):
+class MessagePosted(InboundEvent):
     thread: ThreadRef                        # for a top-level message thread_id == message.id
     message: Message
     in_thread: bool                          # False = top-level channel message (memory recall / auto-suggest only)
 
 
-class MessageChanged(BaseModel):
+class MessageChanged(InboundEvent):
     thread: ThreadRef
     message: Message
 
 
-class MessageDeleted(BaseModel):
+class MessageDeleted(InboundEvent):
     thread: ThreadRef
     message_id: str
 
 
-class ButtonPressed(BaseModel):
+class ButtonPressed(InboundEvent):
     """Any interactive tap: on the card, in an ephemeral, or in a DM. `thread` is resolved from the button payload."""
 
     thread: ThreadRef | None
@@ -47,7 +51,7 @@ class ButtonPressed(BaseModel):
     response_url: str | None = None
 
 
-class FormSubmitted(BaseModel):
+class FormSubmitted(InboundEvent):
     thread: ThreadRef | None
     user_id: str
     form_id: str                             # e.g. "my_position", "deadline", "park", "confirm"
@@ -55,7 +59,7 @@ class FormSubmitted(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)   # private metadata echoed back
 
 
-class HomeOpened(BaseModel):
+class HomeOpened(InboundEvent):
     user_id: str
 
 

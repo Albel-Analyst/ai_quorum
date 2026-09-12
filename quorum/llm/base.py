@@ -35,6 +35,33 @@ class ExtractedOpenQuestion(BaseModel):
 class ExtractedClaim(BaseModel):
     text: str = Field(description="A checkable statement about the outside world (prices, versions, dates, limits)")
     by: str = Field(description="user id")
+    source_message_ids: list[str] = Field(default_factory=list)
+    materiality: Literal["material", "incidental"] = "incidental"
+    disputed: bool = False
+    confidence: float = Field(default=0, ge=0, le=1)
+
+
+class ProposedCommitment(BaseModel):
+    owner: str
+    action: str
+    due_at: datetime | None = None
+    source_message_id: str
+    quote: str = Field(description="Verbatim personal commitment, never an aspiration or hypothetical")
+    explicit_personal_promise: bool = False
+    confidence: float = Field(default=0, ge=0, le=1)
+
+
+class ProposedBlocker(BaseModel):
+    description: str
+    dependency_owner: str | None = None
+    next_expected_event: str
+    source_message_id: str
+
+
+class ProposedLoopControl(BaseModel):
+    intent: Literal["cancel", "defer", "supersede"]
+    source_message_id: str
+    quote: str
 
 
 class Extraction(BaseModel):
@@ -54,6 +81,10 @@ class Extraction(BaseModel):
     decision_by: str | None = Field(default=None, description="user id who called it")
     decision_quote: str = Field(default="", description="short quote proving convergence")
     stakeholders_mentioned: list[str] = Field(default_factory=list, description="user ids mentioned but silent")
+    commitments: list[ProposedCommitment] = Field(default_factory=list)
+    blockers: list[ProposedBlocker] = Field(default_factory=list)
+    decision_rationale: str = ""
+    loop_control: ProposedLoopControl | None = None
 
 
 class DecisionRecordDraft(BaseModel):

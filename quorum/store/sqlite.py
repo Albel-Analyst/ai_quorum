@@ -129,6 +129,10 @@ class Store:
         return [DecisionMemory.model_validate_json(r["json"]) for r in rows]
 
     # --- dedup ----------------------------------------------------------------------------------
+    async def event_processed(self, event_id: str) -> bool:
+        async with self.db.execute("SELECT 1 FROM seen_events WHERE event_id=?", (event_id,)) as cur:
+            return await cur.fetchone() is not None
+
     async def seen(self, event_id: str) -> bool:
         """Returns True if this event id was already processed (and records it otherwise)."""
         try:
@@ -164,6 +168,11 @@ class Store:
             [(thread_key, m.id, m.model_dump_json()) for m in messages],
         )
         await self.db.commit()
+
+    async def replace_messages(self, thread_key: str, messages: list) -> None:
+        """Fresh platform history supersedes the cache, including deleted messages."""
+        await self.db.execute("DELETE FROM message_cache WHERE thread_key=?", (thread_key,))
+        await self.cache_messages(thread_key, messages)
 
     async def delete_cached_message(self, thread_key: str, message_id: str) -> None:
         await self.db.execute("DELETE FROM message_cache WHERE thread_key=? AND message_id=?", (thread_key, message_id))

@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # --- chat platform -------------------------------------------------------------------------
     slack_bot_token: str = ""
     slack_app_token: str = ""
+    channels_enabled: bool = False
+    quorum_bridge_token: str = ""
+    quorum_bridge_port: int = 8765
     # comma-separated channel ids where the passive features (auto-suggest, memory recall) are allowed; empty = all channels the bot is in
     watch_channels: str = ""
 
@@ -24,6 +27,10 @@ class Settings(BaseSettings):
 
     # --- plugins (each one disables itself when its key is empty) ------------------------------
     exa_key: str = Field(default="", alias="EXA_KEY")
+    ambiguous_api_key: str = ""
+    ambiguous_mcp_url: str = "https://app.ambiguous.ai/mcp"
+    ambiguous_assignees: dict[str, str] = Field(default_factory=dict)
+    closure_check_seconds: float = Field(default=60, gt=0)
     # one Atlassian account for both Jira and Confluence (per-product vars below override these)
     atlassian_email: str = ""
     atlassian_token: str = Field(default="", validation_alias=AliasChoices("ATLASSIAN_TOKEN", "ATTLASIAN_TOKEN", "ATLASSIAN_API_TOKEN"))

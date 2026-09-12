@@ -22,6 +22,15 @@ def new_id(prefix: str) -> str:
 
 
 class Status(StrEnum):
+    OBSERVING = "OBSERVING"
+    NEEDS_INPUT = "NEEDS_INPUT"
+    NEEDS_EVIDENCE = "NEEDS_EVIDENCE"
+    EXECUTING = "EXECUTING"
+    BLOCKED = "BLOCKED"
+    VERIFYING = "VERIFYING"
+    CLOSED = "CLOSED"
+    DEFERRED = "DEFERRED"
+    CANCELLED = "CANCELLED"
     FRAMING = "framing"            # question is being understood, options not yet clear
     DELIBERATING = "deliberating"  # options and positions are forming
     VOTING = "voting"              # vote is open
@@ -33,8 +42,10 @@ class Status(StrEnum):
     SUPERSEDED = "superseded"      # a later decision replaced this one
 
 
-TERMINAL = {Status.RECORDED, Status.EXPIRED, Status.SUPERSEDED}
+TERMINAL = {Status.CLOSED, Status.DEFERRED, Status.CANCELLED, Status.SUPERSEDED}
 ACTIVE = {Status.FRAMING, Status.DELIBERATING, Status.VOTING, Status.STALLED}
+ACTIVE |= {Status.OBSERVING, Status.NEEDS_INPUT, Status.NEEDS_EVIDENCE, Status.DECIDED,
+           Status.EXECUTING, Status.BLOCKED, Status.VERIFYING}
 
 
 class ThreadRef(BaseModel):
@@ -111,6 +122,19 @@ class Claim(BaseModel):
     by: str                                  # user id
     verification: Verification | None = None
     checking: bool = False                   # spinner state while the verifier runs
+    source_message_ids: list[str] = Field(default_factory=list)
+    materiality: Literal["material", "incidental"] = "incidental"
+    disputed: bool = False
+    confidence: float = Field(default=0, ge=0, le=1)
+
+    @property
+    def status(self) -> str:
+        verdict = self.verification.verdict if self.verification else "unclear"
+        return {"confirmed": "verified", "refuted": "contradicted"}.get(verdict, "unresolved")
+
+    @property
+    def external_sources(self) -> list[Source]:
+        return self.verification.sources if self.verification else []
 
 
 class Vote(BaseModel):
@@ -131,6 +155,9 @@ class FollowUp(BaseModel):
 
 
 class Decision(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("decision"))
+    alternatives: list[Option] = Field(default_factory=list)
+    supersedes: str | None = None
     option_id: str | None = None
     summary: str = ""                        # what was decided, one paragraph
     rationale: str = ""                      # why — written from the arguments, not from the vote count
@@ -141,6 +168,14 @@ class Decision(BaseModel):
     confirmed_by: str | None = None
     confirmed_at: datetime | None = None
     consequences: str = ""                   # ADR "consequences" paragraph
+
+    @property
+    def text(self) -> str:
+        return self.summary
+
+    @property
+    def decided_at(self) -> datetime | None:
+        return self.confirmed_at
 
 
 class ParkInfo(BaseModel):
@@ -165,10 +200,80 @@ class DecisionHint(BaseModel):
     quote: str = ""
 
 
-class CardState(BaseModel):
+class Evidence(BaseModel):
+    source: str
+    record_id: str
+    observed_at: datetime = Field(default_factory=now)
+    value: str
+    url: str | None = None
+    actor: str | None = None
+    explanation: str = ""
+
+
+class ClosureCondition(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("closure"))
+    mode: Literal["observable", "attestable", "adjudicated"] = "observable"
+    expected_state: str = "done"
+    source: str = "ambiguous"
+    threshold: Literal["equals"] = "equals"
+    evidence: list[Evidence] = Field(default_factory=list)
+
+
+class Commitment(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("commitment"))
+    owner: str
+    action: str
+    due_at: datetime | None = None
+    status: Literal["proposed", "open", "completed", "blocked", "cancelled", "superseded"] = "proposed"
+    source_message_id: str
+    source_text: str = ""
+    confirmation: Literal["pending", "approved", "rejected"] = "pending"
+    confirmed_by: str | None = None
+    closure_condition_id: str
+    external_record_id: str | None = None
+    external_url: str | None = None
+    write_state: Literal["not_started", "in_flight", "recorded", "uncertain"] = "not_started"
+
+
+class Blocker(BaseModel):
+    description: str
+    dependency_owner: str | None = None
+    next_expected_event: str
+    status: Literal["open", "resolved"] = "open"
+    source_message_id: str | None = None
+
+
+class AuditEvent(BaseModel):
+    event_id: str = Field(default_factory=lambda: new_id("event"))
+    event_type: str
+    observed_at: datetime = Field(default_factory=now)
+    state_before: str
+    state_after: str
+    source_ref: str
+
+
+class NextTrigger(BaseModel):
+    kind: Literal["message", "scheduled", "human"] = "message"
+    description: str = "New thread evidence or Check now"
+    at: datetime | None = None
+
+
+class OpenLoop(BaseModel):
     """Everything the card renders. Status is owned by the state machine (see state_machine.py)."""
 
     question: str = ""
+    id: str = Field(default_factory=lambda: new_id("loop"))
+    thread_id: str = ""
+    created_at: datetime = Field(default_factory=now)
+    last_reconciled_at: datetime | None = None
+    next_trigger: NextTrigger | None = Field(default_factory=NextTrigger)
+    commitments: list[Commitment] = Field(default_factory=list)
+    closure_conditions: list[ClosureCondition] = Field(default_factory=list)
+    blockers: list[Blocker] = Field(default_factory=list)
+    audit: list[AuditEvent] = Field(default_factory=list)
+    decision_history: list[Decision] = Field(default_factory=list)
+    closed_at: datetime | None = None
+    reconciliation_error: str | None = None
     context: str = ""                        # 1-2 lines of background from the thread
     options: list[Option] = Field(default_factory=list)
     positions: list[Position] = Field(default_factory=list)
@@ -178,7 +283,7 @@ class CardState(BaseModel):
     deadline_source: Literal["text", "button"] | None = None
     deadline_fired: bool = False             # the deadline already opened/closed the vote; do not fire twice
     all_voted_notified: bool = False         # the decider was already told that everyone voted
-    status: Status = Status.FRAMING
+    status: Status = Status.OBSERVING
     decision: Decision | None = None
     decision_hint: DecisionHint | None = None
     votes: list[Vote] = Field(default_factory=list)
@@ -218,6 +323,14 @@ class CardState(BaseModel):
         voted = {v.user_id for v in self.votes}
         return [u for u in self.participants if u not in voted]
 
+    @property
+    def question_or_outcome(self) -> str:
+        return self.question
+
+
+# Preserve the existing public API and stored JSON while extending the aggregate.
+CardState = OpenLoop
+
 
 class TrackedThread(BaseModel):
     """Persistent aggregate: a thread Quorum follows, plus where its card lives."""
@@ -226,6 +339,8 @@ class TrackedThread(BaseModel):
     author_id: str                           # who wrote the root message
     requested_by: str                        # who asked Quorum to track it
     card_message_id: str | None = None       # platform id of the card message (slack ts)
+    channels_conversation_key: str | None = None
+    card_creation_pending: bool = False
     root_text: str = ""
     permalink: str = ""
     state: CardState = Field(default_factory=CardState)
