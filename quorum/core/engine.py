@@ -56,6 +56,13 @@ class LLMFailed(Exception):
     pass
 
 
+def _substantive(m: Message) -> bool:
+    """A bare "@Quorum" or a one-character reply is not an answer to an open question."""
+    import re
+
+    return len(re.sub(r"<@[A-Z0-9]+>|[\s.,!?]", "", m.text)) >= 3
+
+
 class Engine:
     def __init__(
         self,
@@ -758,7 +765,7 @@ class Engine:
             for q in st.open_questions:
                 if q.answered or not q.directed_to or q.nudged_at or q.declined:
                     continue
-                after = [m for m in messages if m.at > q.asked_at]
+                after = [m for m in messages if m.at > q.asked_at and _substantive(m)]
                 if any(m.user_id == q.directed_to for m in after):
                     q.answered = True
                     dirty = True
