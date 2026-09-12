@@ -1,0 +1,51 @@
+display_information:
+  name: Quorum
+  description: "An agent with no lines: one living decision card and buttons."
+  background_color: "#1f2937"
+features:
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: Quorum
+    always_online: true
+  shortcuts:
+    - name: Track with Quorum
+      type: message
+      callback_id: track_with_quorum
+      description: Follow this thread and keep one living decision card in it
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - channels:join
+      - channels:manage
+      - channels:read
+      - chat:write
+      - chat:write.customize
+      - commands
+      - groups:history
+      - groups:read
+      - im:history
+      - im:read
+      - im:write
+      - reactions:read
+      - reactions:write
+      - users:read
+      # optional: record decisions as Slack Canvases (SLACK_CANVAS_ENABLED=true)
+      - canvases:write
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_home_opened
+      - app_mention
+      - message.channels
+      - message.groups
+      - reaction_added
+  interactivity:
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false

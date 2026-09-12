@@ -1,0 +1,23 @@
+# Local prototype: one container, Socket Mode (outbound only) — no public URL, no ngrok.
+# State (SQLite) and markdown ADRs live in named volumes so restarts keep the decisions journal.
+services:
+  quorum:
+    build: .
+    image: quorum:local
+    container_name: quorum
+    env_file: .env
+    environment:
+      DB_PATH: /app/data/quorum.db
+      MARKDOWN_RECORDS_DIR: /app/records
+    volumes:
+      - quorum-data:/app/data
+      - ./records:/app/records
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sqlite3,sys; sqlite3.connect('/app/data/quorum.db').execute('select 1'); sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  quorum-data:

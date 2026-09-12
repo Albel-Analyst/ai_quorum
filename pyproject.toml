@@ -1,0 +1,37 @@
+[project]
+name = "quorum"
+version = "0.1.0"
+description = "Quorum — an agent with no lines: one living decision card and buttons, inside the thread where the decision is being made."
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "openai>=1.70",
+    "slack-bolt>=1.21",
+    "slack-sdk>=3.33",
+    "aiohttp>=3.10",
+    "aiosqlite>=0.20",
+    "structlog>=24",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.6"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["RUF059", "C408", "F841"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["quorum"]
