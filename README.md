@@ -115,7 +115,7 @@ without Slack — another messenger is another renderer, not another agent.
 | `DEMO_TIME_SCALE`, `DEMO_PERSONAS` | no | demo: speed up timers ×N; treat seeded personas (`Ann,Bob,Cid`) as humans |
 | `WATCH_CHANNELS` | no | restrict passive features (memory recall, auto-suggest) to these channel ids |
 
-Demo script with exact messages: [docs/DEMO.md](docs/DEMO.md). Team guide (RU): [DEVELOPMENT.md](DEVELOPMENT.md).
+Demo script with exact messages: [docs/DEMO.md](docs/DEMO.md) (EN, personas) · [docs/DEMO_RU.md](docs/DEMO_RU.md) (RU instructions, four live roles). Team guide (RU): [DEVELOPMENT.md](DEVELOPMENT.md).
 `make seed CH=… SCENARIO=db|release|vendor|contradict MENTION=…` posts a realistic argument by three personas;
 `make track CH=… TS=… BY=…` starts tracking a thread from the CLI and `make act … ACTION=confirm OPT=A` drives card actions (both run inside the container; `make reset-db` wipes the state).
 

@@ -97,4 +97,4 @@ Slack не доставляет `app_mention` на сообщения бота �
 - **Второй слой**: DM молчащему, Stalled, дедлайн, память с recall.
 - **Стретч**: ephemeral-предложение, Exa, Jira, App Home, Discord-адаптер.
 
-Доступы — `docs/ACCESS.md`. Контракты модулей — `docs/CONTRACTS.md`.
+Доступы — `docs/ACCESS.md`. Контракты модулей — `docs/CONTRACTS.md`. Сценарий демо по ролям — `docs/DEMO_RU.md`.
