@@ -92,21 +92,32 @@ without Slack — another messenger is another renderer, not another agent.
 | *Record* | ADR page in Confluence (or Canvas / Jira / markdown), final card broadcast to the channel | Write anywhere without a tap |
 | Someone contradicts a past decision | A small notice in that thread: *Link* / *Dispute* → a new thread that supersedes the old one | Stay quiet about it |
 
-## Run it
+## Run it in five minutes
 
-```bash
-cp .env.example .env     # Slack tokens (Socket Mode), OpenAI key; everything else is optional
-make env                 # live check of every credential
-make up                  # docker compose — no public URL, no ngrok, state in a volume
-# or on a laptop:
-make install && make run
-```
+1. **Slack app** — create it from [docs/slack_manifest.yaml](docs/slack_manifest.yaml) (App → *From a manifest*), generate an
+   app-level token with `connections:write`, install to the workspace. Details: [docs/SLACK_APP.md](docs/SLACK_APP.md).
+2. **Keys** — `make setup` creates `.env` from [.env.example](.env.example); fill in the three required values.
+3. **Check** — `make env` verifies every credential live and tells you which plugins will be on.
+4. **Start** — `make up` (docker compose, Socket Mode: no public URL, no ngrok; state in a docker volume, ADRs in `./records`).
+   On a laptop instead: `make install && make run`.
+5. **Use** — `/invite @Quorum` into a channel, mention it in a thread (or react ⚖️, or use the *Track with Quorum* shortcut).
 
-Slack app in two minutes from a manifest: [docs/SLACK_APP.md](docs/SLACK_APP.md).
-Demo script: [docs/DEMO.md](docs/DEMO.md). Team guide (RU): [DEVELOPMENT.md](DEVELOPMENT.md).
+| Variable | Required | What it does |
+|---|---|---|
+| `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | yes | bot (`xoxb-`) and Socket Mode (`xapp-`) tokens |
+| `OPENAI_API_KEY` | yes* | extractor / record writer; `LLM_MODEL_FAST`, `LLM_MODEL_SMART`, `OPENAI_BASE_URL` optional. *Empty → deterministic `FakeProvider` (`make fake`) |
+| `EXA_KEY` | no | fact verification plugin; without it the *Verify* button is not rendered |
+| `ATLASSIAN_EMAIL`, `ATLASSIAN_TOKEN`, `JIRA_BASE_URL`, `JIRA_PROJECT_KEY`, `CONFLUENCE_SPACE_KEY` | no | Confluence ADR page + Jira tasks for follow-ups; without them → markdown ADR in `records/` |
+| `SLACK_CANVAS_ENABLED` | no | record decisions as Slack Canvases (scope `canvases:write`) |
+| `QUORUM_LANG` | no | `en` / `ru` chrome of the card (content follows the thread language) |
+| `TIMEZONE` | no | for "by Wednesday" and the date pickers (default `Asia/Tashkent`) |
+| `COALESCE_SECONDS`, `SILENCE_MINUTES`, `SILENCE_MESSAGES`, `STALL_HOURS`, `EXPIRE_HOURS`, `AUTOSUGGEST_EVERY_N` | no | behaviour knobs, see `.env.example` |
+| `DEMO_TIME_SCALE`, `DEMO_PERSONAS` | no | demo: speed up timers ×N; treat seeded personas (`Ann,Bob,Cid`) as humans |
+| `WATCH_CHANNELS` | no | restrict passive features (memory recall, auto-suggest) to these channel ids |
 
-No `OPENAI_API_KEY`? `make fake` runs the whole thing on a deterministic extractor. `DEMO_TIME_SCALE=60` makes the
-timers run sixty times faster for a demo.
+Demo script with exact messages: [docs/DEMO.md](docs/DEMO.md). Team guide (RU): [DEVELOPMENT.md](DEVELOPMENT.md).
+`make seed CH=… SCENARIO=db|release|vendor|contradict MENTION=…` posts a realistic argument by three personas;
+`make track CH=… TS=… BY=…` starts tracking a thread from the CLI and `make act … ACTION=confirm OPT=A` drives card actions (both run inside the container; `make reset-db` wipes the state).
 
 ## Engineering notes
 

@@ -30,6 +30,7 @@ def build_recorders(settings) -> list[Recorder]:   # settings: quorum.config.Set
             email=settings.jira_email,
             api_token=settings.jira_api_token,
             project_key=settings.jira_project_key,
+            issue_type=getattr(settings, "jira_issue_type", "Task"),
         ),
         MarkdownRecorder(dir=settings.markdown_records_dir),
     ]

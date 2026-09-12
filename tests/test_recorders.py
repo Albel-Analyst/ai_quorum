@@ -53,8 +53,22 @@ class FakeSession:
         self.calls: list[dict] = []
 
     def post(self, url: str, **kwargs: object) -> FakeResponse:
-        self.calls.append({"url": url, **kwargs})
+        return self._call("POST", url, **kwargs)
+
+    def get(self, url: str, **kwargs: object) -> FakeResponse:
+        return self._call("GET", url, **kwargs)
+
+    def _call(self, method: str, url: str, **kwargs: object) -> FakeResponse:
+        self.calls.append({"method": method, "url": url, **kwargs})
         return self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
+
+
+JIRA_TYPES_RU = FakeResponse(200, {"issueTypes": [                      # a real Russian-language site
+    {"id": "10006", "name": "Эпик", "subtask": False, "hierarchyLevel": 1},
+    {"id": "10007", "name": "Подзадача", "subtask": True, "hierarchyLevel": -1},
+    {"id": "10008", "name": "Задание", "subtask": False, "hierarchyLevel": 0},
+    {"id": "10009", "name": "История", "subtask": False, "hierarchyLevel": 0},
+]})
 
 
 def sample() -> RecordInput:
@@ -201,7 +215,8 @@ def test_confluence_availability() -> None:
 # jira
 # --------------------------------------------------------------------------------------------
 async def test_jira_one_issue_per_follow_up() -> None:
-    session = FakeSession(FakeResponse(201, {"key": "Q-1"}), FakeResponse(201, {"key": "Q-2"}))
+    types = FakeResponse(200, {"issueTypes": [{"id": "10001", "name": "Task"}, {"id": "10002", "name": "Sub-task", "subtask": True}]})
+    session = FakeSession(types, FakeResponse(201, {"key": "Q-1"}), FakeResponse(201, {"key": "Q-2"}))
     recorder = JiraRecorder("https://site.atlassian.net/", "bot@example.com", "tok", "Q", session=session)
     inp = sample()
     inp.state.records.append(Record(kind="confluence", title="ADR", url="https://wiki.example/x"))
@@ -213,12 +228,16 @@ async def test_jira_one_issue_per_follow_up() -> None:
                                         "https://site.atlassian.net/browse/Q-2"]
     assert [r.kind for r in records] == ["jira", "jira"]
 
-    call = session.calls[0]
+    meta = session.calls[0]
+    assert meta["method"] == "GET"
+    assert meta["url"] == "https://site.atlassian.net/rest/api/3/issue/createmeta/Q/issuetypes"
+    call = session.calls[1]
     assert call["url"] == "https://site.atlassian.net/rest/api/3/issue"
     assert call["headers"]["Authorization"] == aiohttp.encode_basic_auth("bot@example.com", "tok")
     fields = call["json"]["fields"]
     assert fields["project"] == {"key": "Q"}
-    assert fields["issuetype"] == {"name": "Task"}
+    assert fields["issuetype"] == {"id": "10001"}     # resolved once through createmeta, sent by id
+    assert len([c for c in session.calls if c["method"] == "GET"]) == 1   # cached for the second issue
     assert fields["summary"] == "Provision the cluster"
     assert "assignee" not in fields                    # no accountId mapping -> unassigned
     description = json.dumps(fields["description"], ensure_ascii=False)
@@ -234,6 +253,39 @@ async def test_jira_one_issue_per_follow_up() -> None:
     ]
 
 
+async def test_jira_issue_type_on_localised_site() -> None:
+    """A Russian Jira knows no "Task": the translated task type is picked, never the epic (level 1) or a sub-task."""
+    session = FakeSession(JIRA_TYPES_RU, FakeResponse(201, {"key": "KAN-1"}))
+    recorder = JiraRecorder("https://s", "e", "t", "KAN", session=session)
+    inp = sample()
+    inp.state.decision.follow_ups = [FollowUp(text="Provision the cluster")]
+
+    await recorder.record(inp)
+    assert session.calls[1]["json"]["fields"]["issuetype"] == {"id": "10008"}   # Задание == Task
+
+    # an explicit name (any case) wins
+    session = FakeSession(JIRA_TYPES_RU, FakeResponse(201, {"key": "KAN-2"}))
+    recorder = JiraRecorder("https://s", "e", "t", "KAN", session=session, issue_type="история")
+    await recorder.record(inp)
+    assert session.calls[1]["json"]["fields"]["issuetype"] == {"id": "10009"}
+
+    # an unknown name on a site without a task-like type: first standard type, epics and sub-tasks skipped
+    session = FakeSession(JIRA_TYPES_RU, FakeResponse(201, {"key": "KAN-3"}))
+    recorder = JiraRecorder("https://s", "e", "t", "KAN", session=session, issue_type="Bug")
+    await recorder.record(inp)
+    assert session.calls[1]["json"]["fields"]["issuetype"] == {"id": "10008"}
+
+
+async def test_jira_issue_type_falls_back_to_name_without_createmeta() -> None:
+    session = FakeSession(FakeResponse(403, "nope"), FakeResponse(201, {"key": "Q-3"}))
+    recorder = JiraRecorder("https://s", "e", "t", "Q", session=session)
+    inp = sample()
+    inp.state.decision.follow_ups = [FollowUp(text="Provision the cluster")]
+
+    await recorder.record(inp)
+    assert session.calls[1]["json"]["fields"]["issuetype"] == {"name": "Task"}
+
+
 async def test_jira_assignee_when_mapped() -> None:
     session = FakeSession(FakeResponse(201, {"key": "Q-9"}))
     recorder = JiraRecorder("https://s", "e", "t", "Q", session=session, account_ids={"U3": "acc-3"})
@@ -241,7 +293,7 @@ async def test_jira_assignee_when_mapped() -> None:
     inp.state.decision.follow_ups = [FollowUp(text="Provision the cluster", assignee="U3")]
 
     await recorder.record(inp)
-    assert session.calls[0]["json"]["fields"]["assignee"] == {"id": "acc-3"}
+    assert session.calls[-1]["json"]["fields"]["assignee"] == {"id": "acc-3"}
 
 
 async def test_jira_availability_and_no_follow_ups() -> None:

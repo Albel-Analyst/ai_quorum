@@ -239,8 +239,8 @@ class Engine:
     async def refresh(self, key: str, *, force: bool = False) -> None:
         async with self._lock(key):
             thread = await self.store.get_thread(key)
-            if thread is None or thread.state.status in (Status.RECORDED, Status.SUPERSEDED):
-                return
+            if thread is None or thread.state.status in (Status.DECIDED, Status.RECORDED, Status.SUPERSEDED):
+                return  # a decided discussion is closed; "Back to discussion" or "Dispute" reopen it explicitly
             messages = await self._messages(key)
             humans = [m for m in messages if not m.is_bot]
             last = thread.last_seen_message_id
@@ -257,6 +257,11 @@ class Engine:
                 await self.store.save_thread(thread)
                 await self._render(thread, phase_change=False)
                 return
+            # the LLM call took seconds: re-read the thread so a concurrent button/tick is not overwritten
+            fresh = await self.store.get_thread(key)
+            if fresh is None or fresh.state.status in (Status.DECIDED, Status.RECORDED, Status.SUPERSEDED):
+                return
+            thread, state = fresh, fresh.state
             merge(state, ext, humans, now=now())
             state.last_llm_error = None
             state.last_llm_ok_at = now()
@@ -806,6 +811,9 @@ class Engine:
                     reason = await self.llm.stalled_summary(st, await self.names_for(st.stakeholders))
                 except Exception:  # noqa: BLE001
                     reason = "; ".join(q.text for q in st.unanswered())[:300]
+                fresh = await self.store.get_thread(key)
+                if fresh is None or fresh.state.status != st.status:
+                    return  # somebody acted while the summary was being written
                 sm.stall(st, reason)
                 dirty = True
                 open_q = "; ".join(q.text for q in st.unanswered()) or "—"

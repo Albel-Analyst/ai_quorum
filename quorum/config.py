@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     jira_email: str = ""
     jira_api_token: str = ""
     jira_project_key: str = ""
+    jira_issue_type: str = "Task"          # matched case-insensitively against the project's (localised) types
     markdown_records_dir: str = "records"  # fallback recorder: ADR markdown files
     slack_canvas_enabled: bool = False     # needs canvases:write; free plans may reject
 
@@ -58,8 +59,8 @@ class Settings(BaseSettings):
     def _atlassian_defaults(self) -> Settings:
         self.jira_email = self.jira_email or self.atlassian_email
         self.jira_api_token = self.jira_api_token or self.atlassian_token
-        self.confluence_email = self.confluence_email or self.atlassian_email
-        self.confluence_api_token = self.confluence_api_token or self.atlassian_token
+        self.confluence_email = self.confluence_email or self.atlassian_email or self.jira_email
+        self.confluence_api_token = self.confluence_api_token or self.atlassian_token or self.jira_api_token
         if not self.confluence_base_url and self.jira_base_url:
             self.confluence_base_url = self.jira_base_url.rstrip("/") + "/wiki"
         return self

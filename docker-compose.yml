@@ -10,8 +10,10 @@ services:
       DB_PATH: /app/data/quorum.db
       MARKDOWN_RECORDS_DIR: /app/records
     volumes:
+      # SQLite must stay inside the container: a bind mount on Docker Desktop (macOS/Windows) corrupts it under
+      # concurrent access. Use `make track` / `make act` (docker compose exec) instead of host-side tools.
       - quorum-data:/app/data
-      - ./records:/app/records
+      - ./records:/app/records  # markdown ADRs (fallback recorder) — plain files, safe to share
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import sqlite3,sys; sqlite3.connect('/app/data/quorum.db').execute('select 1'); sys.exit(0)"]

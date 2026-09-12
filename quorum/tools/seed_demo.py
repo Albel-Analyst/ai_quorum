@@ -19,10 +19,11 @@ from slack_sdk.web.async_client import AsyncWebClient
 load_dotenv()
 from quorum.config import settings
 
+# only emoji that exist in every Slack workspace (standard set, no aliases that depend on the emoji pack)
 PERSONAS = {
-    "Ann": ":woman-technologist:",
-    "Bob": ":man-technologist:",
-    "Cid": ":male-scientist:",
+    "Ann": ":nerd_face:",
+    "Bob": ":sunglasses:",
+    "Cid": ":thinking_face:",
 }
 
 # (persona, text). {mention} is replaced by <@USER> of the presenter so that a directed question targets a real human.
@@ -42,6 +43,21 @@ SCENARIOS: dict[str, list[tuple[str, str]]] = {
         ("Ann", "{mention}, помнишь, сколько стоит Atlas M10 в eu-central? Для меня это решающее."),
         ("Bob", "И ещё: Postgres 17 вышел в сентябре 2024 с быстрым JSON, аргумент про схему уже слабее."),
         ("Cid", "Ок. Если M10 дешевле $70 — всё же Mongo, иначе ладно, Postgres."),
+    ],
+    "release": [
+        ("Bob", "Release plan for the new checkout: big-bang switch on Friday, or gradual rollout behind a feature flag over two weeks? We need to decide by Thursday."),
+        ("Ann", "Feature flag. We can ramp 5% → 25% → 100% and roll back in seconds. LaunchDarkly is about $10 per seat per month, we already have it."),
+        ("Cid", "Big-bang is simpler: no double code paths, and marketing already announced Friday. Two weeks of ramp means two weeks of supporting both checkouts."),
+        ("Bob", "{mention}, can you confirm whether the payment provider can handle two checkout versions in parallel? That is the real blocker."),
+        ("Ann", "Also: our last big-bang release in March caused a 40-minute outage, so the risk argument is not theoretical."),
+    ],
+    "vendor": [
+        ("Cid", "Error tracking for the mobile app: keep paying for Sentry, or self-host GlitchTip? Budget review is next Monday."),
+        ("Ann", "Sentry. Their mobile SDK has session replay and the Team plan is $26/month. GlitchTip has no replay at all."),
+        ("Bob", "GlitchTip is API-compatible with the Sentry SDK and costs us one small VM, roughly $20/month. Replay is nice-to-have, not must-have."),
+        ("Cid", "{mention}, how many errors per month do we send now? Sentry bills by events and I do not know if we fit the quota."),
+        ("Ann", "Sentry raised prices twice in 2024, so the $26 figure may not hold next year."),
+        ("Bob", "If the event volume is under 50k a month I am fine staying on Sentry, otherwise GlitchTip."),
     ],
     "contradict": [
         ("Cid", "Starting the billing service scaffold today — going with Mongo Atlas, it is just faster for me."),

@@ -173,11 +173,13 @@ Write in the language of the thread (see `language` in the state).
 - dissent — everyone who argued against the chosen option, with their argument in one line, in their own
   words. user_id = the raw platform id. Never soften or drop a dissent; an honest record keeps it.
 - consequences — what changes because of this, including what is now closed for discussion.
-- follow_ups — concrete next actions that fell out of the thread, imperative, one line each.
+- follow_ups — 1 to 4 concrete next actions, imperative, one line each. Always include at least the action that
+  implements the decision (e.g. "Set up Postgres on RDS for the billing service") and any check the thread left open
+  (e.g. "Confirm Atlas M10 pricing" if it still matters); add "Announce the decision to <team>" only if the thread implies it.
   follow_up_assignees — same length as follow_ups, the user id of the owner of each action or null.
 - owner — the user id who owns the outcome, if the thread makes it clear; otherwise null.
 
-Invent nothing. If there were no follow-ups, return an empty list.\
+Invent no facts; follow-ups may be derived from the decision itself.\
 """
 
 STALLED_SYSTEM = """\
