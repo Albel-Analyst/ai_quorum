@@ -29,7 +29,24 @@ TEXT_SUBTYPES = {None, "", "thread_broadcast", "file_share"}
 #: subtypes we never turn into events (join/leave noise, our own posts, edit echoes)
 IGNORED_SUBTYPES = {"bot_message", "channel_join", "channel_leave", "message_replied", "tombstone"}
 
+#: `quorum/tools/seed_demo.py` posts a seeded thread under `username` (chat:write.customize); those messages
+#: arrive as bot messages, and Quorum must read them as if a human wrote them.
+PERSONA_PREFIX = "persona:"
+
 _MENTION = re.compile(r"<@([A-Z0-9]+)(?:\|[^>]*)?>")
+
+
+def parse_personas(raw: str | None) -> set[str]:
+    """`"Ann, Bob ,, Cid"` -> {"Ann", "Bob", "Cid"} (the `QUORUM_DEMO_PERSONAS` / `demo_personas` setting)."""
+    return {name.strip() for name in (raw or "").split(",") if name.strip()}
+
+
+def persona_of(payload: dict[str, Any], personas: set[str] | None) -> str | None:
+    """The persona username of a bot message posted under one of `personas`, else None."""
+    if not personas or not payload.get("bot_id"):
+        return None
+    username = (payload.get("username") or "").strip()
+    return username if username in personas else None
 
 
 def mentions_in(text: str) -> list[str]:
@@ -59,16 +76,23 @@ def _is_bot(payload: dict[str, Any], bot_user_id: str) -> bool:
     return bool(payload.get("bot_id")) or (bool(bot_user_id) and payload.get("user") == bot_user_id)
 
 
-def to_message(payload: dict[str, Any], names_hint: dict[str, str] | None = None, *, is_bot: bool = False) -> Message:
-    user_id = payload.get("user") or payload.get("bot_id") or ""
+def to_message(
+    payload: dict[str, Any],
+    names_hint: dict[str, str] | None = None,
+    *,
+    is_bot: bool = False,
+    personas: set[str] | None = None,
+) -> Message:
+    persona = persona_of(payload, personas)
+    user_id = f"{PERSONA_PREFIX}{persona}" if persona else (payload.get("user") or payload.get("bot_id") or "")
     text = payload.get("text") or ""
     return Message(
         id=payload.get("ts") or "",
         user_id=user_id,
-        user_name=(names_hint or {}).get(user_id, ""),
+        user_name=persona or (names_hint or {}).get(user_id, ""),
         text=text,
         at=ts_to_dt(payload.get("ts")),
-        is_bot=is_bot,
+        is_bot=False if persona else is_bot,
         mentions=mentions_in(text),
     )
 
@@ -77,45 +101,53 @@ def message_event_to_event(
     event: dict[str, Any],
     bot_user_id: str,
     names_hint: dict[str, str] | None = None,
+    *,
+    personas: set[str] | None = None,
 ) -> MessagePosted | MessageChanged | MessageDeleted | None:
-    """Normalize a `message` event. Returns None for anything Quorum must not react to."""
+    """Normalize a `message` event. Returns None for anything Quorum must not react to.
+
+    `personas` are `username`s of seeded demo messages (see `parse_personas`): they arrive as bot messages but
+    are treated as humans (`user_id = "persona:<username>"`).
+    """
     subtype = event.get("subtype")
     channel = event.get("channel") or ""
 
-    if subtype in IGNORED_SUBTYPES:
-        return None
-
-    if subtype in TEXT_SUBTYPES:
-        if _is_bot(event, bot_user_id):
-            return None
-        ts = event.get("ts") or ""
-        thread_ts = event.get("thread_ts")
-        return MessagePosted(
-            thread=thread_ref(channel, thread_ts or ts),
-            message=to_message(event, names_hint),
-            in_thread=bool(thread_ts and thread_ts != ts),
-        )
-
     if subtype == "message_changed":
         inner = event.get("message") or {}
-        if _is_bot(inner, bot_user_id):
+        if persona_of(inner, personas) is None and _is_bot(inner, bot_user_id):
             return None
         ts = inner.get("ts") or ""
         thread_ts = inner.get("thread_ts")
         return MessageChanged(
             thread=thread_ref(channel, thread_ts or ts),
-            message=to_message(inner, names_hint),
+            message=to_message(inner, names_hint, personas=personas),
         )
 
     if subtype == "message_deleted":
         deleted_ts = event.get("deleted_ts") or ""
         previous = event.get("previous_message") or {}
-        if _is_bot(previous, bot_user_id):
+        if persona_of(previous, personas) is None and _is_bot(previous, bot_user_id):
             return None
         thread_ts = previous.get("thread_ts")
         return MessageDeleted(
             thread=thread_ref(channel, thread_ts or deleted_ts),
             message_id=deleted_ts,
+        )
+
+    persona = persona_of(event, personas)
+
+    if persona is None and subtype in IGNORED_SUBTYPES:
+        return None
+
+    if persona is not None or subtype in TEXT_SUBTYPES:
+        if persona is None and _is_bot(event, bot_user_id):
+            return None
+        ts = event.get("ts") or ""
+        thread_ts = event.get("thread_ts")
+        return MessagePosted(
+            thread=thread_ref(channel, thread_ts or ts),
+            message=to_message(event, names_hint, personas=personas),
+            in_thread=bool(thread_ts and thread_ts != ts),
         )
 
     return None
@@ -150,7 +182,8 @@ def _thread_from_payload(payload: dict[str, Any]) -> ThreadRef | None:
 
 
 def action_name(action_id: str) -> str:
-    return action_id.removeprefix(ACTION_PREFIX)
+    """`q:vote:A` -> `vote` (the suffix only makes the id unique inside a block; the payload carries the data)."""
+    return action_id.removeprefix(ACTION_PREFIX).split(":", 1)[0]
 
 
 def block_action_to_event(body: dict[str, Any], action: dict[str, Any]) -> ButtonPressed:

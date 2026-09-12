@@ -17,7 +17,7 @@ from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 load_dotenv()
-from quorum.config import settings  # noqa: E402
+from quorum.config import settings
 
 PERSONAS = {
     "Ann": ":woman-technologist:",

@@ -62,7 +62,13 @@ def merge(state: CardState, ext: Extraction, messages: list[Message], *, now: da
             option_id = None
         merged.append(Position(user_id=p.user_id, option_id=option_id, argument=p.argument.strip()[:300], source="llm"))
     merged.extend(kept.values())
-    state.positions = merged
+    # one position per person: the model sometimes returns one per message — keep the latest, prefer one with an option
+    by_user: dict[str, Position] = {}
+    for p in merged:
+        prev = by_user.get(p.user_id)
+        if prev is None or prev.source != "user" and (p.option_id or not prev.option_id):
+            by_user[p.user_id] = p if prev is None or p.argument else Position(user_id=p.user_id, option_id=p.option_id, argument=prev.argument, source=p.source)
+    state.positions = list(by_user.values())
 
     # open questions: keep identity (id, asked_at, nudged) of the ones still open; new ones get asked_at from the message
     still_open: list[OpenQuestion] = []

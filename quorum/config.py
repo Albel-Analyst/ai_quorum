@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     demo_personas: str = ""                # comma-separated bot usernames (chat:write.customize) treated as humans in seeded demo threads
 
     @model_validator(mode="after")
-    def _atlassian_defaults(self) -> "Settings":
+    def _atlassian_defaults(self) -> Settings:
         self.jira_email = self.jira_email or self.atlassian_email
         self.jira_api_token = self.jira_api_token or self.atlassian_token
         self.confluence_email = self.confluence_email or self.atlassian_email

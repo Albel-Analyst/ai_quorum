@@ -134,7 +134,7 @@ class Engine:
                 case HomeOpened():
                     await self.publish_home(event.user_id)
         except Exception:
-            log.exception("engine.event_failed", event=type(event).__name__)
+            log.exception("engine.event_failed", event_type=type(event).__name__)
 
     # ------------------------------------------------------------------ tracking
     async def track(self, ev: TrackRequested) -> TrackedThread | None:

@@ -30,6 +30,7 @@ MAX_BLOCKS = 50
 MAX_SECTION = 3000
 MAX_ACTION_ELEMENTS = 5
 MAX_BUTTON_LABEL = 75
+MAX_SELECT_OPTIONS = 100
 NONE_VALUE = "__none__"          # Slack rejects an empty select value; this stands for "no option"
 
 STATUS_EMOJI: dict[Status, str] = {
@@ -94,7 +95,8 @@ def button(
     element: dict[str, Any] = {
         "type": "button",
         "text": {"type": "plain_text", "text": trim(label, MAX_BUTTON_LABEL), "emoji": True},
-        "action_id": f"q:{action}",
+        # Slack wants action_ids unique within a block: q:vote:A, q:verify:c_1a2b
+        "action_id": f"q:{action}" + "".join(f":{payload[k]}" for k in ("option_id", "claim_id", "question_id") if payload and payload.get(k)),
         "value": json.dumps(payload or {}, ensure_ascii=False),
     }
     if style in ("primary", "danger"):
@@ -482,8 +484,8 @@ def _notice_button(item: Button, thread_key: str | None) -> dict[str, Any]:
 
 
 def render_notice(notice: Notice, *, thread_key: str | None = None) -> list[dict[str, Any]]:
-    blocks: list[dict[str, Any]] = [section(notice.text)]
-    if notice.lines:
+    blocks: list[dict[str, Any]] = [section(notice.text or "—")]
+    if any(line for line in notice.lines):
         blocks.append(context(*notice.lines))
     blocks += actions([_notice_button(b, thread_key) for b in notice.buttons])
     return _cap(blocks)
@@ -496,7 +498,14 @@ def _input_element(field: Any, lang: str) -> dict[str, Any]:
         element["options"] = [
             {"text": {"type": "plain_text", "text": trim(label, 75), "emoji": True}, "value": value or NONE_VALUE}
             for value, label in field.options
-        ]
+        ][:MAX_SELECT_OPTIONS]
+        if not element["options"]:
+            # Slack rejects a static_select without options (a Confirm on a thread that has no options yet):
+            # offer the "none" entry, which comes back as "" — exactly what an unset select means.
+            element["options"] = [
+                {"text": {"type": "plain_text", "text": t(lang, "form.my_position.none"), "emoji": True},
+                 "value": NONE_VALUE}
+            ]
         if field.initial is not None:
             wanted = field.initial or NONE_VALUE
             initial = next((o for o in element["options"] if o["value"] == wanted), None)

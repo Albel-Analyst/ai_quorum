@@ -47,6 +47,8 @@ class SlackPlatform:
         self.settings = settings
         self.lang = lang
         self.bot_user_id: str = ""
+        # seeded demo threads are posted under `username` (chat:write.customize): read them as humans
+        self.personas: set[str] = nz.parse_personas(settings.demo_personas)
         # the engine flips these when the plugins report themselves available
         self.verifier_available: bool = False
         self.recorders_available: bool = False
@@ -83,7 +85,7 @@ class SlackPlatform:
     def _emit(self, event: Event) -> None:
         """Hand off to the engine without blocking Bolt's listener (Slack expects an ack within 3 s)."""
         if self._sink is None:
-            log.warning("slack.no_sink", event=type(event).__name__)
+            log.warning("slack.no_sink", event_type=type(event).__name__)
             return
         task = asyncio.create_task(self._deliver(event))
         self._tasks.add(task)
@@ -96,7 +98,7 @@ class SlackPlatform:
         except asyncio.CancelledError:  # pragma: no cover - shutdown
             raise
         except Exception:
-            log.exception("slack.sink_failed", event=type(event).__name__)
+            log.exception("slack.sink_failed", event_type=type(event).__name__)
 
     async def _seen(self, body: dict[str, Any]) -> bool:
         event_id = body.get("event_id")
@@ -129,7 +131,7 @@ class SlackPlatform:
             try:
                 if await self._seen(body):
                     return
-                normalized = nz.message_event_to_event(event, self.bot_user_id)
+                normalized = nz.message_event_to_event(event, self.bot_user_id, personas=self.personas)
                 if normalized is not None:
                     self._emit(normalized)
             except Exception:
@@ -176,7 +178,7 @@ class SlackPlatform:
                     return
                 ref, user_id, root_ts = parsed
                 message = body.get("message") or {}
-                root = nz.to_message(message) if message.get("ts") == root_ts else None
+                root = nz.to_message(message, personas=self.personas) if message.get("ts") == root_ts else None
                 self._emit(TrackRequested(thread=ref, requested_by=user_id, via="shortcut", root_message=root))
             except Exception:
                 log.exception("slack.shortcut_failed")
@@ -211,7 +213,11 @@ class SlackPlatform:
             return ts, None
         first = messages[0]
         root_ts = first.get("thread_ts") or first.get("ts") or ts
-        root = nz.to_message(first, is_bot=self._is_bot(first)) if first.get("ts") == root_ts else None
+        root = (
+            nz.to_message(first, is_bot=self._is_bot(first), personas=self.personas)
+            if first.get("ts") == root_ts
+            else None
+        )
         return root_ts, root
 
     # ---- outbound: Slack calls ---------------------------------------------------------------------
@@ -351,9 +357,8 @@ class SlackPlatform:
                 cursor=cursor,
             )
             for raw in resp.get("messages") or []:
-                is_bot = self._is_bot(raw)
-                message = nz.to_message(raw, is_bot=is_bot)
-                if message.user_id and not is_bot:
+                message = nz.to_message(raw, is_bot=self._is_bot(raw), personas=self.personas)
+                if message.user_id and not message.is_bot and not message.user_name:
                     message.user_name = await self.user_name(message.user_id)
                 messages.append(message)
             cursor = ((resp.get("response_metadata") or {}).get("next_cursor") or "") or None
@@ -365,6 +370,9 @@ class SlackPlatform:
     async def user_name(self, user_id: str) -> str:
         if not user_id:
             return ""
+        if user_id.startswith(nz.PERSONA_PREFIX):
+            # a seeded demo persona has no Slack account: its username is the display name
+            return user_id.removeprefix(nz.PERSONA_PREFIX)
         cached = self._names.get(user_id)
         if cached:
             return cached
